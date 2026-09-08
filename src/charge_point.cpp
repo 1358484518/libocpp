@@ -21,6 +21,7 @@
 
 #include <ocpp/v16/charge_point.hpp>
 #include <ocpp/v16/database_handler.hpp>
+#include <ocpp/v16/ocpp_enums.hpp>
 
 #include <ocpp/common/cistring.hpp>
 #include <ocpp/common/string.hpp>
@@ -36,9 +37,13 @@ int main(int argc, char* argv[]) {
     po::options_description desc("OCPP charge point");
 
     desc.add_options()("help,h", "produce help message");
-    desc.add_options()("maindir", po::value<std::string>(), "set main dir in which the schemas folder resides");
-    desc.add_options()("conf", po::value<std::string>(), "charge point config relative to maindir");
+    desc.add_options()("maindir", po::value<std::string>(), "install prefix; schemas at <maindir>/share/everest/modules/OCPP");
+    desc.add_options()("share-path", po::value<std::string>(), "direct path to OCPP share (profile_schemas, core_migrations)");
+    desc.add_options()("conf", po::value<std::string>(), "config JSON (relative to share-path or absolute)");
     desc.add_options()("logconf", po::value<std::string>(), "The path to a custom logging.ini");
+    desc.add_options()("auto-session", "after BootNotification Accepted, start/stop a DEADBEEF transaction and exit");
+    desc.add_options()("database-path", po::value<std::string>(), "directory for the OCPP sqlite database");
+    desc.add_options()("user-config", po::value<std::string>(), "path to user_config.json");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -54,8 +59,15 @@ int main(int argc, char* argv[]) {
         maindir = vm["maindir"].as<std::string>();
     }
 
-    const auto database_path = "/tmp/ocpp";
-    const auto share_path = fs::path(maindir) / "share" / "everest" / "modules" / "OCPP";
+    std::string database_path = "/tmp/ocpp";
+    if (vm.count("database-path") != 0) {
+        database_path = vm["database-path"].as<std::string>();
+    }
+    fs::create_directories(database_path);
+    fs::path share_path = fs::path(maindir) / "share" / "everest" / "modules" / "OCPP";
+    if (vm.count("share-path") != 0) {
+        share_path = fs::path(vm["share-path"].as<std::string>());
+    }
 
     // initialize logging as early as possible
     auto logging_config = share_path / "logging.ini";
@@ -69,7 +81,10 @@ int main(int argc, char* argv[]) {
         conf = vm["conf"].as<std::string>();
     }
 
-    fs::path config_path = share_path / conf;
+    fs::path config_path = fs::path(conf);
+    if (!config_path.is_absolute()) {
+        config_path = share_path / conf;
+    }
     if (!fs::exists(config_path)) {
         EVLOG_error << "Could not find config at: " << config_path;
         return 1;
@@ -80,6 +95,12 @@ int main(int argc, char* argv[]) {
     auto json_config = json::parse(config_file);
     json_config["Internal"]["LogMessagesFormat"][0] = "console_detailed";
     auto user_config_path = fs::path("/tmp") / "user_config.json";
+    if (vm.count("user-config") != 0) {
+        user_config_path = fs::path(vm["user-config"].as<std::string>());
+        if (user_config_path.has_parent_path()) {
+            fs::create_directories(user_config_path.parent_path());
+        }
+    }
 
     if (fs::exists(user_config_path)) {
         std::ifstream ifs(user_config_path.c_str());
@@ -254,6 +275,20 @@ int main(int argc, char* argv[]) {
                   << " and transaction id: " << transaction_id << std::endl;
     });
 
+    std::mutex boot_m;
+    std::condition_variable boot_cv;
+    bool boot_accepted = false;
+    charge_point->register_boot_notification_response_callback(
+        [&](const ocpp::v16::BootNotificationResponse& boot) {
+            std::cout << "BootNotification.conf status="
+                      << ocpp::v16::conversions::registration_status_to_string(boot.status) << std::endl;
+            if (boot.status == ocpp::v16::RegistrationStatus::Accepted) {
+                std::lock_guard<std::mutex> lk(boot_m);
+                boot_accepted = true;
+                boot_cv.notify_all();
+            }
+        });
+
     /************************************** STOP REGISTERING CALLBACKS **************************************/
 
     charge_point->start();
@@ -261,6 +296,37 @@ int main(int argc, char* argv[]) {
     {
         std::lock_guard<std::mutex> lk(m);
         running = true;
+    }
+
+    auto run_deadbeef_session = [&]() {
+        const auto uuid = boost::lexical_cast<std::string>(boost::uuids::random_generator()());
+        charge_point->on_session_started(1, uuid, ocpp::SessionStartedReason::EVConnected, std::nullopt);
+        const auto result = charge_point->authorize_id_token(ocpp::CiString<20>(std::string("DEADBEEF")));
+        if (result.id_tag_info.status != ocpp::v16::AuthorizationStatus::Accepted) {
+            std::cerr << "Authorize rejected" << std::endl;
+            return false;
+        }
+        charge_point->on_transaction_started(1, uuid, "DEADBEEF", 0, std::nullopt, ocpp::DateTime(), std::nullopt);
+        charge_point->on_resume_charging(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        charge_point->on_transaction_stopped(1, uuid, ocpp::v16::Reason::Local, ocpp::DateTime(), 2500, std::nullopt,
+                                             std::nullopt);
+        charge_point->on_session_stopped(1, uuid);
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
+        return true;
+    };
+
+    if (vm.count("auto-session") != 0) {
+        std::unique_lock<std::mutex> lk(boot_m);
+        if (!boot_cv.wait_for(lk, std::chrono::seconds(20), [&] { return boot_accepted; })) {
+            std::cerr << "Timed out waiting for BootNotification Accepted (is the Python CSMS running?)" << std::endl;
+            charge_point->stop();
+            return 1;
+        }
+        lk.unlock();
+        const bool ok = run_deadbeef_session();
+        charge_point->stop();
+        return ok ? 0 : 2;
     }
 
     std::thread t1([&] {
