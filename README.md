@@ -129,7 +129,64 @@ python3 scripts/ocpp_csms/run_csms.py --port 9000
 
 mock CSMS 是明文 WebSocket，只覆盖开机、授权、一笔交易和少量远程控制，不是完整平台。
 
+### 调试（gdb / ddd）
+
+用调试器跟 **一条 OCPP 报文对应的函数**，不要从 `main` 单步走进 Boost、nlohmann、libwebsockets。  
+先看 CSMS 终端或 `/tmp/*.html` / `*.log` 里的 Action，再对那个函数下断点。WebSocket 在**别的线程**，Boot 的 CALLRESULT 往往不在你 `next` 的线程上。
+
+必须 **Debug** 编译（带 `-g`，不要 `Release`），否则行号对不准：
+
+```bash
+export PATH="$HOME/everest/bin:$PATH"
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -Deverest-cmake_DIR="$(cd ../everest-cmake && pwd)" \
+  -DLIBOCPP16_BUILD_EXAMPLES=ON
+cmake --build build -j"$(nproc)" --target charge_point
+```
+
+`./scripts/setup_and_build.sh` 默认 `BUILD_TYPE=Debug`。`file build/src/charge_point` 应显示 not stripped。
+
+终端 A 先起 CSMS（**不要开 HTTP 代理**）：
+
+```bash
+python3 scripts/ocpp_csms/run_csms.py --port 9000
+```
+
+建议先学 **OCPP 1.6**，不要加 `--auto-session`（交互输入 `start_transaction` 时再停）。gdb：
+
+```bash
+gdb --args ./build/src/charge_point \
+  --share-path "$(pwd)/config/v16" \
+  --conf "$(pwd)/scripts/ocpp_csms/config-mock-v16.json" \
+  --logconf "$(pwd)/config/logging.ini"
+```
+
+gdb 里：
+
+```
+break ocpp::v16::ChargePointImpl::boot_notification
+break ocpp::v16::ChargePointImpl::authorize_id_token
+break ocpp::v16::ChargePoint::on_transaction_started
+break ocpp::v16::ChargePoint::on_transaction_stopped
+run
+```
+
+连上后可用 `info threads`、`thread apply all bt`。一次只跟一个动作（例如只跟 Boot）。
+
+ddd 是 gdb 的图形界面（需已安装 `ddd`）：
+
+```bash
+ddd --gdb --args ./build/src/charge_point \
+  --share-path "$(pwd)/config/v16" \
+  --conf "$(pwd)/scripts/ocpp_csms/config-mock-v16.json" \
+  --logconf "$(pwd)/config/logging.ini"
+```
+
+OCPP 2.0.1 同样用 Debug 编 `charge_point_v2`，断点改到 `src/charge_point_v2.cpp` 的 `boot_notification_callback`、`validate_token`、`on_transaction_started`。
+
 --------
+
 
 
 This is a C++ library implementation of OCPP for version 1.6, 2.0.1 and 2.1.
