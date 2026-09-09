@@ -87,6 +87,8 @@ export CHARGE_POINT_V2_BIN="$(pwd)/build/src/charge_point_v2"
 python3 scripts/ocpp_csms/test_libocpp_csms.py -v
 ```
 
+连本地 Python CSMS **不要开 HTTP/HTTPS 网络代理**（`http_proxy` / `https_proxy` / `HTTP_PROXY` / `HTTPS_PROXY`）。libwebsockets 会把 `ws://127.0.0.1:...` 也走代理，日志出现 `CLIENT_CONNECTION_ERROR: [http_proxy -> 502]`，BootNotification 超时。测完再开回代理即可。
+
 测试会自己起 CSMS（随机端口），拉起 C++ `--auto-session`：
 
 - 1.6：BootNotification → Authorize → StartTransaction → StopTransaction
