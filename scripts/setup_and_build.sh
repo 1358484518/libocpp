@@ -287,7 +287,7 @@ cmake -S "${LIBOCPP_SRC}" -B "${BUILD_DIR}" \
     -DLIBOCPP16_BUILD_EXAMPLES=ON \
     -DBUILD_TESTING="${BUILD_TESTING}"
 
-cmake --build "${BUILD_DIR}" -j"${JOBS}" --target charge_point ocpp
+cmake --build "${BUILD_DIR}" -j"${JOBS}" --target charge_point charge_point_v2 ocpp
 
 CHARGE_POINT=""
 if [[ -x "${BUILD_DIR}/src/charge_point" ]]; then
@@ -304,6 +304,11 @@ if [[ -n "${CHARGE_POINT}" ]]; then
     echo "  example binary : ${CHARGE_POINT}"
 else
     warn "charge_point binary not found; check cmake --build output"
+fi
+if [[ -x "${BUILD_DIR}/src/charge_point_v2" ]]; then
+    echo "  example binary : ${BUILD_DIR}/src/charge_point_v2"
+else
+    warn "charge_point_v2 binary not found; check cmake --build output"
 fi
 echo
 echo "Reconfigure later with edm on PATH:"

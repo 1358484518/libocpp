@@ -10,7 +10,125 @@ This standalone repository is now read-only and will no longer be maintained.
 Please visit the [EVerest repository](https://github.com/EVerest/EVerest/tree/main/lib/everest/ocpp) to access the active codebase,
 submit issues, or contribute.
 
+## 本 fork：编译与测试（学习用）
+
+工作都在分支 **`cursor/build-libocpp-sh-57cc`** 上，**不要合并进 `main`**。  
+目标：在本机编出 libocpp 示例桩，连仓库里的 Python mock CSMS，跑通 OCPP **1.6** 和 **2.0.1**。
+
+依赖：Linux（Debian/Ubuntu）、g++、CMake、Boost、OpenSSL 3、SQLite3、`python3-yaml`、`python3`。  
+还需要 **everest-cmake**（默认放在 libocpp 的**上一级目录** `../everest-cmake`）。  
+**不要** `pip install git+https://github.com/EVerest/EVerest.git`（会去克隆整个 EVerest 仓库）。本仓库用 `scripts/edm_minimal.py` 代替 edm。
+
+### 编译
+
+在仓库根目录：
+
+```bash
+git checkout cursor/build-libocpp-sh-57cc
+chmod +x scripts/setup_and_build.sh
+./scripts/setup_and_build.sh
+```
+
+GitHub 不通或代理 CONNECT 后 502 时：
+
+```bash
+GITHUB_MIRROR="https://ghproxy.net/" ./scripts/setup_and_build.sh
+```
+
+失败过 FetchContent 后必须清掉 build 再配一次：
+
+```bash
+rm -rf build
+GITHUB_MIRROR="https://ghproxy.net/" ./scripts/setup_and_build.sh
+```
+
+脚本会：装 apt 依赖、克隆 `everest-cmake`（若还没有）、把 stub `edm` 放到 `~/everest/bin`、配置 CMake（`-DLIBOCPP16_BUILD_EXAMPLES=ON`）、编译 `ocpp`、`charge_point`、`charge_point_v2`。
+
+也可以手写 CMake（`edm` 必须在 `PATH` 上，且已有 everest-cmake）：
+
+```bash
+export PATH="$HOME/everest/bin:$PATH"
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -Deverest-cmake_DIR="$(cd ../everest-cmake && pwd)" \
+  -DLIBOCPP16_BUILD_EXAMPLES=ON
+cmake --build build -j"$(nproc)" --target charge_point charge_point_v2
+```
+
+产物：
+
+- `build/src/charge_point` — OCPP 1.6 示例
+- `build/src/charge_point_v2` — OCPP 2.0.1 示例
+
+（若用别的 `BUILD_DIR`，例如 `/tmp/libocpp-build`，二进制在 `$BUILD_DIR/src/`。）
+
+### 测试
+
+先装 Python 依赖（仅 `websockets`）：
+
+```bash
+pip install -r scripts/ocpp_csms/requirements.txt
+# 若环境不允许 pip：python3 -m pip install --user -r scripts/ocpp_csms/requirements.txt
+```
+
+**1. Python 假桩 ↔ Python CSMS**（不依赖 C++ 编译）：
+
+```bash
+python3 scripts/ocpp_csms/test_integration.py -v
+```
+
+应看到 5 个测试 OK（1.6 / 2.0.1 本地启停、远程停、GetVariables 等）。
+
+**2. libocpp C++ 示例 ↔ 同一个 Python CSMS**（需要上面编好的二进制）：
+
+```bash
+export CHARGE_POINT_BIN="$(pwd)/build/src/charge_point"
+export CHARGE_POINT_V2_BIN="$(pwd)/build/src/charge_point_v2"
+python3 scripts/ocpp_csms/test_libocpp_csms.py -v
+```
+
+测试会自己起 CSMS（随机端口），拉起 C++ `--auto-session`：
+
+- 1.6：BootNotification → Authorize → StartTransaction → StopTransaction
+- 2.0.1：BootNotification → Authorize → TransactionEvent
+
+找不到二进制时这两个用例会 **skip**，不是失败。也可不设环境变量：脚本还会在 `/tmp/libocpp-build/src`、`/tmp/user-libocpp/build/src`、`build/src` 里找。
+
+**3. 手动连（对照日志）**
+
+终端 A：
+
+```bash
+python3 scripts/ocpp_csms/run_csms.py --port 9000
+```
+
+终端 B，OCPP 1.6：
+
+```bash
+./build/src/charge_point \
+  --share-path "$(pwd)/config/v16" \
+  --conf "$(pwd)/scripts/ocpp_csms/config-mock-v16.json" \
+  --logconf "$(pwd)/config/logging.ini" \
+  --auto-session
+```
+
+终端 B，OCPP 2.0.1（把 Device Model 里的 CSMS URL 改成实际端口，或先跑 `test_libocpp_csms.py` 看它如何改 `InternalCtrlr.json`）：
+
+```bash
+./build/src/charge_point_v2 \
+  --config-dir "$(pwd)/config/v2/component_config" \
+  --migrations "$(pwd)/config/v2/device_model_migrations" \
+  --core-migrations "$(pwd)/config/v2/core_migrations" \
+  --logconf "$(pwd)/config/logging.ini" \
+  --auto-session
+```
+
+默认 Device Model 里 CSMS 是 `ws://localhost:9000`，桩 ID `cp001`。CSMS 交互命令：`list`、`remote_start <cpId>`、`remote_stop <cpId>`、`reset <cpId>`。
+
+mock CSMS 是明文 WebSocket，只覆盖开机、授权、一笔交易和少量远程控制，不是完整平台。
+
 --------
+
 
 This is a C++ library implementation of OCPP for version 1.6, 2.0.1 and 2.1.
 (see [OCPP protocols at OCA website](https://openchargealliance.org/protocols/open-charge-point-protocol/)).
