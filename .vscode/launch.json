@@ -1,0 +1,60 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "OCPP 1.6 charge_point (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/src/charge_point",
+            "args": [
+                "--share-path",
+                "${workspaceFolder}/config/v16",
+                "--conf",
+                "${workspaceFolder}/scripts/ocpp_csms/config-mock-v16.json",
+                "--logconf",
+                "${workspaceFolder}/config/logging.ini"
+            ],
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "stopAtEntry": true,
+            "console": "integratedTerminal",
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "setupCommands": [
+                {
+                    "description": "pretty printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "OCPP 2.0.1 charge_point_v2 (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/src/charge_point_v2",
+            "args": [
+                "--config-dir",
+                "${workspaceFolder}/config/v2/component_config",
+                "--migrations",
+                "${workspaceFolder}/config/v2/device_model_migrations",
+                "--core-migrations",
+                "${workspaceFolder}/config/v2/core_migrations",
+                "--logconf",
+                "${workspaceFolder}/config/logging.ini"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": true,
+            "console": "integratedTerminal",
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "setupCommands": [
+                {
+                    "description": "pretty printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
