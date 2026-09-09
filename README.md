@@ -154,7 +154,8 @@ chmod +x scripts/debug_charge_point_ddd.sh
 ./scripts/debug_charge_point_ddd.sh
 ```
 
-窗口出来后 **Program → Run**（或下面敲 `run`），会停在 `src/charge_point.cpp` 的 `main`。参数已设好（share-path / mock 配置 / logging.ini）。
+窗口出来后 **Program → Run**（或下面敲 `run`），会停在 `src/charge_point.cpp` 的 `main`。参数已设好（share-path / mock 配置 / logging.ini）。  
+脚本带 `--no-exec-window`，避免 DDD 卡在 **Starting xterm...**（没装 `xterm` 时常见）。桩的打印和 `start_transaction` 输入在**启动脚本的那个终端**里。若仍弹出 xterm 对话框，点 Cancel，并确认用的是更新后的脚本。
 
 终端 A 先起 CSMS（**不要开 HTTP 代理**）：
 

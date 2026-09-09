@@ -64,11 +64,12 @@ echo "Start CSMS in another terminal (no HTTP proxy):"
 echo "  python3 ${REPO}/scripts/ocpp_csms/run_csms.py --port 9000"
 echo
 echo "DDD: when the window appears, Program → Run  (stops in main)."
+echo "Stdout stays in the terminal that launched this script (no xterm)."
 echo "Then: next / step / continue. Extra breaks e.g.:"
 echo "  break ocpp::v16::ChargePointImpl::boot_notification"
 echo
 
 cd "${REPO}"
-# Do not pass --args to ddd (breaks DDD 3.3 GUI). Hand the program only.
-# -x is for gdb inside --debugger.
-exec ddd --debugger "gdb -q -x ${GDBFILE}" "${BIN}"
+# --no-exec-window: DDD 3.3 otherwise hangs on "Starting xterm..." if xterm is missing.
+# Do not pass --args to ddd (breaks DDD 3.3 GUI).
+exec ddd --no-exec-window --debugger "gdb -q -x ${GDBFILE}" "${BIN}"
