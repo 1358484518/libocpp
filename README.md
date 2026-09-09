@@ -147,6 +147,15 @@ cmake --build build -j"$(nproc)" --target charge_point
 
 `./scripts/setup_and_build.sh` 默认 `BUILD_TYPE=Debug`。`file build/src/charge_point` 应显示 not stripped。
 
+一键开 DDD（不要用 `ddd --gdb --args`，老 DDD 会只有版权横幅、没有窗口）。终端 A 先起 CSMS，终端 B：
+
+```bash
+chmod +x scripts/debug_charge_point_ddd.sh
+./scripts/debug_charge_point_ddd.sh
+```
+
+窗口出来后 **Program → Run**（或下面敲 `run`），会停在 `src/charge_point.cpp` 的 `main`。参数已设好（share-path / mock 配置 / logging.ini）。
+
 终端 A 先起 CSMS（**不要开 HTTP 代理**）：
 
 ```bash
@@ -173,15 +182,6 @@ run
 ```
 
 连上后可用 `info threads`、`thread apply all bt`。一次只跟一个动作（例如只跟 Boot）。
-
-ddd 是 gdb 的图形界面（需已安装 `ddd`）：
-
-```bash
-ddd --gdb --args ./build/src/charge_point \
-  --share-path "$(pwd)/config/v16" \
-  --conf "$(pwd)/scripts/ocpp_csms/config-mock-v16.json" \
-  --logconf "$(pwd)/config/logging.ini"
-```
 
 OCPP 2.0.1 同样用 Debug 编 `charge_point_v2`，断点改到 `src/charge_point_v2.cpp` 的 `boot_notification_callback`、`validate_token`、`on_transaction_started`。
 
